@@ -51,7 +51,7 @@ class Plugin(pwchemPlugin):
 
     @classmethod
     def addAlgPred2Package(cls, env, default=True):
-        # NOTE (real bug found+fixed 2026-07-24 via a live 'scipion3 installb'
+        # NOTE (real bug found+fixed via a live 'scipion3 installb'
         # run, never exercised before that): using InstallHelper with a custom
         # packageHome pointing outside Scipion's own default build directory
         # (EM_ROOT/<name>-<version>/) breaks env.addPackage's own completion
@@ -65,7 +65,7 @@ class Plugin(pwchemPlugin):
         # other real, working example in this project), and lets
         # env.addPackage use its own default build directory instead of a
         # mismatched custom one.
-        # NOTE (real bug found+fixed 2026-07-24, THREE more issues found only
+        # NOTE (real bug found+fixed, THREE more issues found only
         # by running an actual prediction, not just 'algpred2 --help'): the
         # real PyPI 'algpred2' package under-declares its own dependencies
         # ('pip show algpred2' lists only argparse/numpy/pandas) -- it also
