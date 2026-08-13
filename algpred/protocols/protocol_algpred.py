@@ -44,10 +44,14 @@ class ProtAlgPred2Prediction(EMProtocol):
     Predicts allergenicity of a set of peptide candidates using a local
     AlgPred2 installation, and annotates every input ROI with the resulting
     score/verdict (does NOT filter the set: downstream protocols decide
-    what to do with the annotation, e.g. the multi-epitope construct
-    assembly protocol excludes 'Allergen' B-cell candidates but does not
-    apply this filter to HTL/CTL candidates, since an MHC-buried core is
-    never a free circulating epitope for IgE recognition).
+    what to do with the annotation. DECISION 2026-08-13: the multi-epitope
+    construct assembly protocol used to exclude 'Allergen' B-cell
+    candidates -- it no longer does, see
+    ``epitopeconstruct.utils.assembly.select_bcell_candidates``, ported
+    from the same-day decision in the standalone project's publication
+    validation panel. HTL/CTL candidates were never filtered by this verdict
+    to begin with, since an MHC-buried core is never a free circulating
+    epitope for IgE recognition).
 
     This same protocol is meant to be reused twice in a workflow: once on
     a large SetOfSequenceROIs of per-peptide B-cell candidates (upstream of
