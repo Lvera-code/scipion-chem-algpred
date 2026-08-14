@@ -19,7 +19,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='scipion-chem-algpred',
-    version='0.1.0',
+    version='0.2.0',
     description='Scipion framework plugin for allergenicity prediction with AlgPred2',
     long_description=long_description,
     url='https://github.com/Lvera-code/scipion-chem-algpred',

@@ -43,15 +43,23 @@ class ProtAlgPred2Prediction(EMProtocol):
 
     Predicts allergenicity of a set of peptide candidates using a local
     AlgPred2 installation, and annotates every input ROI with the resulting
-    score/verdict (does NOT filter the set: downstream protocols decide
-    what to do with the annotation. DECISION 2026-08-13: the multi-epitope
-    construct assembly protocol used to exclude 'Allergen' B-cell
-    candidates -- it no longer does, see
-    ``epitopeconstruct.utils.assembly.select_bcell_candidates``, ported
-    from the same-day decision in the standalone project's publication
-    validation panel. HTL/CTL candidates were never filtered by this verdict
-    to begin with, since an MHC-buried core is never a free circulating
-    epitope for IgE recognition).
+    score/verdict. Does NOT filter the set: downstream protocols decide
+    what to do with the annotation (``epitopeconstruct.utils.assembly.
+    select_bcell_candidates`` keeps 'Allergen' candidates in the construct,
+    with the verdict left visible on the ROI for an informed decision.
+    HTL/CTL candidates are never filtered by this verdict to begin with,
+    since an MHC-buried core is never a free circulating epitope for IgE
+    recognition).
+
+    Model: runs AlgPred2 in hybrid mode (RF + BLAST + MERCI) by default,
+    not the ML-only mode. The ML-only mode classifies purely from
+    amino-acid composition, with no comparison against real IgE allergen
+    sequences or motifs, and is prone to marking 'Allergen' candidates with
+    no such evidence behind them. The evidence breakdown
+    (``_algpredMlScore``/``_algpredMerciScore``/``_algpredBlastScore``) is
+    always exposed so a verdict backed by real homology/motif evidence can
+    be told apart from one that is composition statistics alone (the last
+    two are always 0 if run in ML-only mode).
 
     This same protocol is meant to be reused twice in a workflow: once on
     a large SetOfSequenceROIs of per-peptide B-cell candidates (upstream of
@@ -63,8 +71,10 @@ class ProtAlgPred2Prediction(EMProtocol):
     Output
     ------
     outputROIs: the same SetOfSequenceROIs as the input, with each ROI
-    annotated with ``_algpredScore`` (float) and ``_algpredVerdict``
-    (``'Allergen'``/``'Non-Allergen'``, raw AlgPred2 text).
+    annotated with ``_algpredScore`` (float, Hybrid Score in the default
+    model), ``_algpredVerdict`` (``'Allergen'``/``'Non-Allergen'``, raw
+    AlgPred2 text), and the ``_algpredMlScore``/``_algpredMerciScore``/
+    ``_algpredBlastScore`` evidence breakdown (float each).
     """
 
     _label = 'algpred2 allergenicity'
@@ -74,10 +84,17 @@ class ProtAlgPred2Prediction(EMProtocol):
         form.addParam('inputROIs', params.PointerParam, pointerClass='SetOfSequenceROIs',
                        label='Sequence ROIs: ',
                        help='Peptide candidates to evaluate for allergenicity.')
+        form.addParam('model', params.EnumParam, choices=['Hybrid (RF+BLAST+MERCI)', 'ML only (RF)'],
+                       default=0, label='Model: ',
+                       help='Hybrid (default): combines the RF classifier with BLAST against a real '
+                            'IgE allergen database and MERCI against documented IgE motifs (Sharma et '
+                            'al. 2021, PMID 33201237). ML only: RandomForest over amino-acid '
+                            'composition alone, no real homology/motif evidence -- prone to marking '
+                            "'Allergen' candidates with no clinical correlate.")
         form.addParam('threshold', params.FloatParam, default=0.3,
-                       label='ML_Score threshold: ',
-                       help='AlgPred2 ML_Score threshold used internally by the tool to classify '
-                            'Allergen vs. Non-Allergen.')
+                       label='Score threshold: ',
+                       help='AlgPred2 Hybrid Score (or ML_Score, in ML-only model) threshold used '
+                            'internally by the tool to classify Allergen vs. Non-Allergen.')
         form.addParam('timeoutSeconds', params.IntParam, label='Timeout (s): ', default=300,
                        expertLevel=params.LEVEL_ADVANCED)
 
@@ -97,6 +114,10 @@ class ProtAlgPred2Prediction(EMProtocol):
         # the cursor's last state.
         return [roi.clone() for roi in self.inputROIs.get()]
 
+    def _getModelArg(self):
+        # EnumParam index 0 ('Hybrid') -> AlgPred2 -m 2; index 1 ('ML only') -> -m 1.
+        return 1 if self.model.get() == 1 else 2
+
     def algpredStep(self):
         rois = self._getRois()
         sequences = [roi.getROISequence() for roi in rois]
@@ -106,7 +127,8 @@ class ProtAlgPred2Prediction(EMProtocol):
         fastaPath = self._getExtraPath('candidates.fasta')
         write_fasta(sequences, fastaPath)
 
-        args = f'-i {fastaPath} -o {self._getRawOutputPath()} -t {self.threshold.get()} -d 2'
+        args = (f'-i {fastaPath} -o {self._getRawOutputPath()} '
+                f'-t {self.threshold.get()} -m {self._getModelArg()} -d 2')
         algpredPlugin.runAlgPred2(self, args)
 
     def createOutputStep(self):
@@ -116,12 +138,15 @@ class ProtAlgPred2Prediction(EMProtocol):
             return
 
         padded = len(sequences) == 1
-        resultDf = parse_output(self._getRawOutputPath(), n_expected=len(sequences), padded=padded)
+        resultDf = parse_output(self._getRawOutputPath(), sequences=sequences, padded=padded)
 
         outROIs = SetOfSequenceROIs(filename=self._getPath('sequenceROIs.sqlite'))
         for roi, row in zip(rois, resultDf.itertuples(index=False)):
             roi._algpredScore = Float(row.algpred_score)
             roi._algpredVerdict = String(row.algpred_verdict)
+            roi._algpredMlScore = Float(row.algpred_ml_score)
+            roi._algpredMerciScore = Float(row.algpred_merci_score)
+            roi._algpredBlastScore = Float(row.algpred_blast_score)
             outROIs.append(roi)
 
         if len(outROIs) > 0:

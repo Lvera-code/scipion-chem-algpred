@@ -18,9 +18,13 @@ class TestAlgPred2Prediction(BaseTest):
     SPACER = 'GGG'
     AMINOACIDSSEQ = SPACER.join(PEPTIDES)
 
-    # Real AlgPred2 output (ML_Score threshold 0.3, default), from a direct
-    # local run of the real binary -- not estimated. 2 Allergen + 2
-    # Non-Allergen, a genuine mixed result confirming both verdict paths.
+    # Real AlgPred2 output in hybrid mode (score threshold 0.3, default),
+    # from a direct local run of the real binary -- not estimated. 2
+    # Allergen + 2 Non-Allergen, a genuine mixed result confirming both
+    # verdict paths. None of the 4 peptides hit the BLAST allergen
+    # database or a MERCI IgE motif, so Hybrid Score equals the RF
+    # (ML) score alone here -- still exercises the hybrid-mode output
+    # schema end to end.
     EXPECTED_VERDICT = {
         'NLVPMVATV': ('Allergen', 0.335),
         'GILGFVFTL': ('Non-Allergen', 0.286),
@@ -91,3 +95,6 @@ class TestAlgPred2Prediction(BaseTest):
             expectedVerdict, expectedScore = self.EXPECTED_VERDICT[seq]
             self.assertEqual(roi._algpredVerdict.get(), expectedVerdict)
             self.assertAlmostEqual(roi._algpredScore.get(), expectedScore, places=3)
+            self.assertAlmostEqual(roi._algpredMlScore.get(), expectedScore, places=3)
+            self.assertAlmostEqual(roi._algpredMerciScore.get(), 0.0, places=3)
+            self.assertAlmostEqual(roi._algpredBlastScore.get(), 0.0, places=3)
